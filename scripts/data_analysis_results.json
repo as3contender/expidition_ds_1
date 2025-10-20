@@ -1,0 +1,733 @@
+{
+  "total_territories": 56,
+  "territories_with_li": 40,
+  "territories_with_ae": 12,
+  "class_counts": {
+    "городища": 1,
+    "иное": 25,
+    "пашня": 11,
+    "ямы": 13,
+    "дороги": 26,
+    "фортификация": 8,
+    "городище": 11,
+    "архитектура": 12,
+    "курганы": 22,
+    "селище": 10,
+    "ямы ": 1,
+    "межа": 1
+  },
+  "data_type_counts": {
+    "Li": 40,
+    "Ae": 14
+  },
+  "territory_details": [
+    {
+      "name": "ДЕМИДОВКА",
+      "full_name": "002_ДЕМИДОВКА_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [
+        "иное",
+        "пашня",
+        "ямы",
+        "дороги",
+        "городища"
+      ],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "ЛУБНО",
+      "full_name": "003_ЛУБНО_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [
+        "иное",
+        "дороги",
+        "фортификация",
+        "городище"
+      ],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "МОСКОВИТЫ",
+      "full_name": "004_МОСКОВИТЫ_FINAL",
+      "has_li": true,
+      "has_ae": true,
+      "classes": [
+        "иное",
+        "пашня",
+        "архитектура",
+        "фортификация",
+        "дороги",
+        "ямы"
+      ],
+      "data_types": [
+        "Li",
+        "Ae"
+      ]
+    },
+    {
+      "name": "МАКЕЕВО",
+      "full_name": "006_МАКЕЕВО_FINAL",
+      "has_li": true,
+      "has_ae": true,
+      "classes": [
+        "иное",
+        "архитектура",
+        "курганы",
+        "дороги",
+        "ямы"
+      ],
+      "data_types": [
+        "Li",
+        "Ae"
+      ]
+    },
+    {
+      "name": "ДРАКОНИЙОСТРОВ",
+      "full_name": "009_ДРАКОНИЙОСТРОВ_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "ЮШКОВО",
+      "full_name": "010_ЮШКОВО_FINAL",
+      "has_li": true,
+      "has_ae": true,
+      "classes": [
+        "иное",
+        "курганы",
+        "пашня",
+        "дороги"
+      ],
+      "data_types": [
+        "Li",
+        "Ae"
+      ]
+    },
+    {
+      "name": "СЕЛЯНЕ",
+      "full_name": "012_СЕЛЯНЕ_FINAL",
+      "has_li": true,
+      "has_ae": true,
+      "classes": [
+        "иное",
+        "дороги",
+        "пашня",
+        "курганы",
+        "селище",
+        "ямы"
+      ],
+      "data_types": [
+        "Li",
+        "Ae"
+      ]
+    },
+    {
+      "name": "ГРЯДЦЫ",
+      "full_name": "013_ГРЯДЦЫ_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [
+        "иное",
+        "дороги",
+        "ямы",
+        "пашня"
+      ],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "КАБЛУКОВО",
+      "full_name": "014_КАБЛУКОВО_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [
+        "иное",
+        "дороги",
+        "ямы",
+        "селище"
+      ],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "НОВЕНЬКОЕ",
+      "full_name": "015_НОВЕНЬКОЕ_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [
+        "иное",
+        "пашня",
+        "курганы",
+        "городище",
+        "дороги",
+        "ямы"
+      ],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "ЛИХУША",
+      "full_name": "019_ЛИХУША_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [
+        "дороги",
+        "курганы",
+        "пашня",
+        "городище"
+      ],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "РУНА",
+      "full_name": "020_РУНА_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [
+        "городище"
+      ],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "СТРЕКАЛОВКА",
+      "full_name": "022_СТРЕКАЛОВКА_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [
+        "фортификация",
+        "городище",
+        "ямы",
+        "селище"
+      ],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "СУДЬБИЩИ",
+      "full_name": "025_СУДЬБИЩИ_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [
+        "иное",
+        "дороги",
+        "фортификация",
+        "пашня"
+      ],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "КУЛИКОВОПОЛЕ",
+      "full_name": "026_КУЛИКОВОПОЛЕ_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "ВЫШЕНСКОЕ",
+      "full_name": "027_ВЫШЕНСКОЕ_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "ВЫШЕГЖА_02",
+      "full_name": "030_ВЫШЕГЖА_02_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "МЕШКОВО",
+      "full_name": "031_МЕШКОВО_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "МУРАВЛЕВО",
+      "full_name": "032_МУРАВЛЕВО_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "СЕМИБРАТНЕЕ_1",
+      "full_name": "034_СЕМИБРАТНЕЕ_1_FINAL",
+      "has_li": true,
+      "has_ae": true,
+      "classes": [],
+      "data_types": [
+        "Li",
+        "Ae"
+      ]
+    },
+    {
+      "name": "КРАСНОСЕЛЬСКАЯ_0.5км",
+      "full_name": "037_КРАСНОСЕЛЬСКАЯ_0.5км_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "НОВОТИТАРОВСКАЯ",
+      "full_name": "037_НОВОТИТАРОВСКАЯ_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "ОСЕЧКИ",
+      "full_name": "037_ОСЕЧКИ_FINAL",
+      "has_li": false,
+      "has_ae": false,
+      "classes": [],
+      "data_types": []
+    },
+    {
+      "name": "ЕЛИЗАВЕТИНСКОЕ",
+      "full_name": "038_ЕЛИЗАВЕТИНСКОЕ_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [
+        "иное",
+        "городище",
+        "архитектура",
+        "дороги",
+        "ямы"
+      ],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "ТРОСТЕНЕЦ_01",
+      "full_name": "039_ТРОСТЕНЕЦ_01_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "ТРОСТЕНЕЦ_02",
+      "full_name": "039_ТРОСТЕНЕЦ_02_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "УСТЬ-РЕКА",
+      "full_name": "040_УСТЬ-РЕКА_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "ШУМГОРА",
+      "full_name": "041_ШУМГОРА_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [
+        "иное",
+        "пашня",
+        "городище",
+        "архитектура",
+        "курганы",
+        "дороги"
+      ],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "ОКУЛОВКА",
+      "full_name": "046_ОКУЛОВКА_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [
+        "иное",
+        "дороги",
+        "селище"
+      ],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "СИТКА",
+      "full_name": "047_СИТКА_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [
+        "иное",
+        "дороги"
+      ],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "ТИМЕРЕВО",
+      "full_name": "048_ТИМЕРЕВО_FINAL",
+      "has_li": true,
+      "has_ae": true,
+      "classes": [
+        "дороги",
+        "курганы"
+      ],
+      "data_types": [
+        "Li",
+        "Ae"
+      ]
+    },
+    {
+      "name": "САРАТОВ",
+      "full_name": "052_САРАТОВ_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [
+        "дороги",
+        "курганы",
+        "ямы",
+        "иное"
+      ],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "НИКОЛА-ЛЕНИВЕЦ",
+      "full_name": "053_НИКОЛА-ЛЕНИВЕЦ_FINAL",
+      "has_li": true,
+      "has_ae": true,
+      "classes": [
+        "иное",
+        "архитектура",
+        "городище",
+        "курганы",
+        "ямы ",
+        "дороги",
+        "селище"
+      ],
+      "data_types": [
+        "Li",
+        "Ae"
+      ]
+    },
+    {
+      "name": "КОПАНСКОЕ",
+      "full_name": "054_КОПАНСКОЕ_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [
+        "иное",
+        "курганы"
+      ],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "ПРИМАКИ_1.3км",
+      "full_name": "056_ПРИМАКИ_1.3км_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [
+        "иное",
+        "курганы"
+      ],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "ОСЕЧКИ_1.3км",
+      "full_name": "057_ОСЕЧКИ_1.3км_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [
+        "курганы"
+      ],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "ОСЕЧКИ_1.1км",
+      "full_name": "058_ОСЕЧКИ_1.1км_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [
+        "курганы"
+      ],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "НОВОТИТОРОВСКАЯ_1.8км",
+      "full_name": "060_НОВОТИТОРОВСКАЯ_1.8км_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "НОВОТИТОРОВСКАЯ_2.8км",
+      "full_name": "061_НОВОТИТОРОВСКАЯ_2.8км_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [
+        "курганы"
+      ],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "КРАСНОСЕЛЬСКАЯ_1.7км",
+      "full_name": "062_КРАСНОСЕЛЬСКАЯ_1.7км_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "КЧР",
+      "full_name": "064_КЧР_FINAL",
+      "has_li": true,
+      "has_ae": false,
+      "classes": [
+        "дороги",
+        "архитектура",
+        "курганы"
+      ],
+      "data_types": [
+        "Li"
+      ]
+    },
+    {
+      "name": "ПЕТРОВСКОЕ",
+      "full_name": "070_ПЕТРОВСКОЕ_FINAL",
+      "has_li": false,
+      "has_ae": true,
+      "classes": [
+        "пашня",
+        "архитектура",
+        "курганы",
+        "дороги",
+        "селище"
+      ],
+      "data_types": [
+        "Ae"
+      ]
+    },
+    {
+      "name": "ЧУДОВО",
+      "full_name": "073_ЧУДОВО_FINAL",
+      "has_li": false,
+      "has_ae": false,
+      "classes": [],
+      "data_types": []
+    },
+    {
+      "name": "ИЗБОРСК",
+      "full_name": "075_ИЗБОРСК_FINAL",
+      "has_li": false,
+      "has_ae": true,
+      "classes": [
+        "иное",
+        "дороги",
+        "архитектура",
+        "фортификация",
+        "городище",
+        "курганы",
+        "селище",
+        "ямы"
+      ],
+      "data_types": [
+        "Ae"
+      ]
+    },
+    {
+      "name": "ЕГИПЕТ_КАРАВАННЫЕ ПУТИ",
+      "full_name": "078_ЕГИПЕТ_КАРАВАННЫЕ ПУТИ_FINAL",
+      "has_li": false,
+      "has_ae": false,
+      "classes": [],
+      "data_types": []
+    },
+    {
+      "name": "ЧЕЛЮСКИНЕЦ",
+      "full_name": "081_ЧЕЛЮСКИНЕЦ_FINAL",
+      "has_li": false,
+      "has_ae": false,
+      "classes": [
+        "иное"
+      ],
+      "data_types": [
+        "Ae"
+      ]
+    },
+    {
+      "name": "ГОЧЕВО ",
+      "full_name": "082_ГОЧЕВО _FINAL",
+      "has_li": false,
+      "has_ae": true,
+      "classes": [],
+      "data_types": [
+        "Ae"
+      ]
+    },
+    {
+      "name": "ТЫВА",
+      "full_name": "084_ТЫВА_FINAL",
+      "has_li": false,
+      "has_ae": false,
+      "classes": [],
+      "data_types": []
+    },
+    {
+      "name": "КАЛМЫКИЯ",
+      "full_name": "085_КАЛМЫКИЯ_FINAL",
+      "has_li": false,
+      "has_ae": false,
+      "classes": [],
+      "data_types": []
+    },
+    {
+      "name": "ВОРОНЕЖ",
+      "full_name": "086_ВОРОНЕЖ_FINAL",
+      "has_li": false,
+      "has_ae": false,
+      "classes": [],
+      "data_types": []
+    },
+    {
+      "name": "КУРМЕНТУ",
+      "full_name": "087_КУРМЕНТУ_FINAL",
+      "has_li": false,
+      "has_ae": false,
+      "classes": [],
+      "data_types": []
+    },
+    {
+      "name": "КАБАРДИНО-БАЛКАРИЯ",
+      "full_name": "089_КАБАРДИНО-БАЛКАРИЯ_FINAL",
+      "has_li": false,
+      "has_ae": false,
+      "classes": [],
+      "data_types": []
+    },
+    {
+      "name": "ОРНОК",
+      "full_name": "091_ОРНОК_FINAL",
+      "has_li": false,
+      "has_ae": false,
+      "classes": [],
+      "data_types": []
+    },
+    {
+      "name": "ПЕРЫНЬ",
+      "full_name": "095_ПЕРЫНЬ_FINAL",
+      "has_li": false,
+      "has_ae": true,
+      "classes": [
+        "иное",
+        "архитектура",
+        "фортификация",
+        "городище",
+        "дороги",
+        "ямы",
+        "селище"
+      ],
+      "data_types": [
+        "Ae"
+      ]
+    },
+    {
+      "name": "ШИШКИНО",
+      "full_name": "098_ШИШКИНО_FINAL",
+      "has_li": false,
+      "has_ae": false,
+      "classes": [
+        "иное",
+        "пашня",
+        "курганы",
+        "архитектура",
+        "фортификация",
+        "межа",
+        "дороги",
+        "селище"
+      ],
+      "data_types": [
+        "Ae"
+      ]
+    },
+    {
+      "name": "СЕЛЬЦО",
+      "full_name": "099_СЕЛЬЦО_FINAL",
+      "has_li": false,
+      "has_ae": true,
+      "classes": [
+        "архитектура",
+        "курганы"
+      ],
+      "data_types": [
+        "Ae"
+      ]
+    }
+  ]
+}

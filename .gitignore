@@ -140,3 +140,6 @@ Thumbs.db
 
 # Data
 data/
+
+# Runs
+runs/

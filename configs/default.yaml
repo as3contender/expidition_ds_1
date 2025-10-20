@@ -1,0 +1,67 @@
+seed: 42
+
+data:
+  # Корневая папка, где лежат территории вида XXX_FINAL
+  regions_root: "./data/train"   # ← укажи свой путь к папкам 002_ДЕМИДОВКА_FINAL, 003_ЛУБНО_FINAL, ...
+  # Какой растр брать как Hillshade внутри 02_*_Li_карты
+  hillshade_channels:
+    - "*_Li_карты/*_Lidar_c.tif"
+    - "*_Li_карты/*_Lidar_ch.tif"
+    - "*_Li_карты/*_Lidar_g.tif"
+    - "*_Li_карты/*_Lidar_i.tif"
+
+  # Маски берём из: 06_*_разметка/Li/*.geojson
+  labels_subpath: "*_разметка/Li/*.geojson"
+
+  # Классы и их веса под F2/лоссы (пример — правь под ваш бриф)
+  classes:
+    selishcha: 5.0
+    kurgany: 4.0
+    karavannye_puti: 3.0
+    gorodishcha: 2.0
+    fortifikatsii: 2.0
+    dorogi: 1.0
+    pashni: 1.0
+    yamy: 1.0
+    inoe: 0.5
+
+  # Буферы (в метрах) для линейных тонких классов при растеризации
+  class_buffer_m:
+    dorogi: 2.0
+    karavannye_puti: 2.5
+
+  # Слайдинг-окна (если тила нет)
+  tile_size: 512
+  tile_stride: 384    # overlap
+
+train:
+  batch_size: 4
+  num_workers: 4
+  epochs: 5
+  lr: 3e-4
+  weight_decay: 1e-4
+  amp: true
+  oversample: true
+  oversample_factor: 2.0
+  # Ограничить количество регионов для быстрого теста
+  limit_regions: 5         # 0 или отсутствует — без ограничения
+  limit_val_regions: 2     # можно 0, чтобы валидировать на полном наборе
+
+model:
+  encoder: "resnet34"
+  encoder_weights: "imagenet"
+  in_channels: 1
+
+log:
+  out_dir: "runs/default"
+
+# Порог по умолчанию на инференсе (будет перезаписан, если сделаешь тюнинг)
+thresholds:
+  gorodishcha: 0.35
+  fortifikatsii: 0.35
+  dorogi: 0.30
+  selishcha: 0.35
+  pashni: 0.40
+  yamy: 0.35
+  karavannye_puti: 0.30
+  inoe: 0.45
