@@ -132,22 +132,70 @@ def main(cfg_path="configs/default.yaml"):
     print("Channel coverage (train):", dict(counter))
 
     ds_tr = SlidingGeoDataset(train_regions, classes, tile, stride, augment=True, class_buffers_m=class_buffers)
+
+    # ==== Coverage check ====
+    from shapely.geometry import box
+    import rasterio
+    from rasterio.vrt import WarpedVRT
+    from rasterio.warp import Resampling
+    from rasterio.windows import Window
+
+    print("\n[coverage] by region (train):")
+    for ridx, row in ds_tr.df.iterrows():
+        gdf = ds_tr._gdfs.get(ridx, None)
+        if gdf is None or gdf.empty:
+            print(f"  {row.region_name}: labels=0 feats")
+            continue
+
+        # находим референс
+        ref_path = None
+        for p in row.raster_paths:
+            if p and Path(p).exists():
+                ref_path = p
+                break
+        if ref_path is None:
+            print(f"  {row.region_name}: no raster")
+            continue
+
+        labels_crs = ds_tr._labels_crs[ridx]
+        # размеры сетки VRT (в CRS меток)
+        with rasterio.open(ref_path) as ref, WarpedVRT(ref, dst_crs=labels_crs, resampling=Resampling.bilinear) as vrt:
+            H, W = vrt.height, vrt.width
+            # выберем только тайлы этого региона
+            tiles = [it for it in ds_tr.items if it[0] == ridx]
+            k = 0
+            for _, y, x, h, w in tiles[:2000]:  # ограничим проверку 2000 тайлов на всякий
+                win = Window(x, y, w, h)
+                bounds = rasterio.windows.bounds(win, vrt.transform)
+                if gdf.geometry.intersects(box(*bounds)).any():
+                    k += 1
+            print(f"  {row.region_name}: tiles with labels {k} / {len(tiles)}")
+    # ============================================
+
     ds_va = SlidingGeoDataset(val_regions, classes, tile, stride, augment=False, class_buffers_m=class_buffers)
     print(f"Tiles: train={len(ds_tr)}, val={len(ds_va)}")
 
-    # Быстрый sanity-check: есть ли вообще положительные пиксели?
-    from torch.utils.data import Subset
+    # ==== Honest probe: случайная выборка по всему датасету + счётчик прикрытых тайлов ====
+    import random
     import numpy as np
 
-    probe = Subset(ds_tr, list(range(min(50, len(ds_tr)))))
+    random.seed(0)
+
+    N = min(400, len(ds_tr))  # проверим 400 случайных окон по всему train
+    idxs = random.sample(range(len(ds_tr)), N)
     pos_pix = np.zeros(len(classes), dtype=np.int64)
-    for i in range(len(probe)):
-        _, m, _ = probe[i]
-        # m: [C,H,W]
-        pos_pix += m.long().sum(dim=(1, 2)).numpy()
-    print("Pos pixels per class (probe):", dict(zip(classes, map(int, pos_pix))))
+    non_empty_tiles = 0
+    for j in idxs:
+        _, m, _ = ds_tr[j]  # m: [C,H,W]
+        s = m.sum(dim=(1, 2)).long().numpy()
+        if s.sum() > 0:
+            non_empty_tiles += 1
+        pos_pix += s
+
+    print("Honest probe — non-empty tiles:", int(non_empty_tiles), "of", N)
+    print("Pos pixels per class (honest):", dict(zip(classes, map(int, pos_pix))))
     exit()
-    # ============================================
+    # ==== end probe ====
 
     dl_tr = DataLoader(
         ds_tr,

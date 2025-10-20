@@ -1,34 +1,68 @@
-import geopandas as gpd
 import rasterio
-from rasterio.vrt import WarpedVRT
-from rasterio.warp import Resampling
-from rasterio.features import rasterize
-import numpy as np
 from pathlib import Path
+from collections import defaultdict
 
-tif = Path("data/train/002_ДЕМИДОВКА_FINAL/02_Демидовка_Li_карты/02_Демидовка_Lidar_сh.tif")
-gj = Path("data/train/002_ДЕМИДОВКА_FINAL/06_Демидовка_разметка/Li/Демидовка_Li_городища.geojson")
 
-gdf = gpd.read_file(gj)  # EPSG:3857
-print("labels feats:", len(gdf), "crs:", gdf.crs)
+def check_tif_crs():
+    """Проверяет CRS всех TIF файлов в папках *_Li_карты"""
+    train_dir = Path("data/train")
 
-with rasterio.open(tif) as src:
-    # Перепроецируем РАСТР в CRS меток (EPSG:3857)
-    with WarpedVRT(src, dst_crs=gdf.crs, resampling=Resampling.bilinear) as vrt:
-        # ограничимся окном вокруг меток — так быстрее и меньше памяти
-        xmin, ymin, xmax, ymax = gdf.total_bounds
-        win = vrt.window(xmin, ymin, xmax, ymax).round_offsets().round_lengths()
-        H, W = int(win.height), int(win.width)
-        if H <= 0 or W <= 0:
-            print("empty window")
-            raise SystemExit(0)
-        transform = vrt.window_transform(win)
+    if not train_dir.exists():
+        print(f"Папка {train_dir} не найдена")
+        return
 
-        mask = rasterize(
-            ((geom, 1) for geom in gdf.geometry),
-            out_shape=(H, W),
-            transform=transform,
-            fill=0,
-            all_touched=True,
-        )
-        print("mask sum:", int(mask.sum()))
+    crs_stats = defaultdict(list)
+    total_files = 0
+
+    print(f"Ищем папки в: {train_dir}")
+
+    # Ищем все папки с маской *_Li_карты на любом уровне вложенности
+    li_karty_dirs = list(train_dir.glob("*/02_*Li_карты"))
+    print(f"Найдено папок Li_карты: {len(li_karty_dirs)}")
+
+    for region_dir in li_karty_dirs:
+        print(f"\n=== {region_dir.name} ===")
+
+        # Ищем все TIF файлы в папке
+        tif_files = list(region_dir.glob("*.tif"))
+
+        if not tif_files:
+            print("  TIF файлы не найдены")
+            continue
+
+        for tif_file in tif_files:
+            try:
+                with rasterio.open(tif_file) as src:
+                    crs = src.crs
+                    width = src.width
+                    height = src.height
+
+                    print(f"  {tif_file.name}")
+                    print(f"    CRS: {crs}")
+                    print(f"    Размер: {width}x{height}")
+
+                    # Группируем по CRS для статистики
+                    crs_str = str(crs) if crs else "None"
+                    crs_stats[crs_str].append(str(tif_file))
+                    total_files += 1
+
+            except Exception as e:
+                print(f"  {tif_file.name} - ОШИБКА: {e}")
+
+    # Выводим статистику
+    print(f"\n=== СТАТИСТИКА ===")
+    print(f"Всего проверено файлов: {total_files}")
+    print(f"Уникальных CRS: {len(crs_stats)}")
+
+    for crs, files in crs_stats.items():
+        print(f"\nCRS: {crs}")
+        print(f"  Количество файлов: {len(files)}")
+        if len(files) <= 5:  # Показываем файлы если их немного
+            for f in files:
+                print(f"    - {Path(f).name}")
+        else:
+            print(f"    - {Path(files[0]).name} (и еще {len(files)-1} файлов)")
+
+
+if __name__ == "__main__":
+    check_tif_crs()

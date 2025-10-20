@@ -1,6 +1,7 @@
 import geopandas as gpd
 from pathlib import Path
-p = Path("data/train/002_ДЕМИДОВКА_FINAL/06_Демидовка_разметка/Li/Демидовка_Li_городища.geojson")
+
+p = Path("data/train/014_КАБЛУКОВО_FINAL/06_Каблуково_разметка/Li/Каблуково_Li_дороги.geojson")
 
 for eng in (None, "fiona"):
     try:

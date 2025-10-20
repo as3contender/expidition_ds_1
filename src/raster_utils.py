@@ -14,10 +14,41 @@ def read_hillshade(path: str | Path) -> tuple[np.ndarray, dict]:
     return img, meta
 
 
-def sliding_windows(h: int, w: int, tile: int, stride: int):
-    for y in range(0, max(1, h - tile + 1), stride):
-        for x in range(0, max(1, w - tile + 1), stride):
-            yield y, x, tile, tile
+# src/raster_utils.py
+def sliding_windows(H: int, W: int, tile: int, stride: int):
+    """
+    Генерирует окна (y, x, h, w) так, чтобы:
+      - стартовые смещения не выходили за границы,
+      - последний тайл "прижимался" к правому/нижнему краю,
+      - если картинка меньше тайла, всё равно вернуть одно окно (0,0,tile,tile).
+    """
+    tile = int(tile)
+    stride = int(stride)
+    H = int(H)
+    W = int(W)
+
+    if H <= 0 or W <= 0:
+        return  # пустой генератор
+
+    ys = list(range(0, max(1, H - tile + 1), stride))
+    xs = list(range(0, max(1, W - tile + 1), stride))
+
+    end_y = max(0, H - tile)
+    end_x = max(0, W - tile)
+
+    if len(ys) == 0:
+        ys = [0]
+    elif ys[-1] != end_y:
+        ys.append(end_y)
+
+    if len(xs) == 0:
+        xs = [0]
+    elif xs[-1] != end_x:
+        xs.append(end_x)
+
+    for y in ys:
+        for x in xs:
+            yield (int(y), int(x), tile, tile)
 
 
 def window_transform(src_transform, y, x):
