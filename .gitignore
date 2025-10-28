@@ -143,3 +143,6 @@ data/
 
 # Runs
 runs/
+
+# Kaggle
+.kaggle

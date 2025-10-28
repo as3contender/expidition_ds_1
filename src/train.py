@@ -1,284 +1,458 @@
-import yaml
-import pandas as pd
+# src/train.py
+from __future__ import annotations
+
+import os
+import json
 from pathlib import Path
-import torch
-from torch.utils.data import DataLoader
-from torch.optim import AdamW
-from torch import amp
+from typing import Dict, List, Tuple
+
+import numpy as np
+import pandas as pd
 from tqdm import tqdm
 
-from .dataset_sliding import SlidingGeoDataset
-from .model_unet import build_unet
-from .losses import ComboLoss
-from .metrics_local import f2_weighted
-import json, collections
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, Sampler
+import math
+import random
 
-import matplotlib.pyplot as plt
-import numpy as np
-import csv
+import albumentations as A
 import cv2
+import yaml
+import segmentation_models_pytorch as smp
+
+# --- наши модули ---
+from .dataset_sliding import SlidingGeoDataset
+from .build_splits import build_splits
+from .utils.losses import make_weighted_bce_dice
 
 
-def _save_curve(out_dir, history):
-    # history: list of dict(epoch, loss, f2w)
-    xs = [h["epoch"] for h in history]
-    ls = [h["loss"] for h in history]
-    fs = [h["f2w"] for h in history]
-    plt.figure(figsize=(6, 4))
-    plt.plot(xs, ls, label="train loss")
-    plt.plot(xs, fs, label="val F2w")
-    plt.xlabel("epoch")
-    plt.grid(True)
-    plt.legend()
-    plt.tight_layout()
-    (out_dir / "learning_curve.png").parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(out_dir / "learning_curve.png", dpi=150)
-    plt.close()
-
-
-def _append_metrics_csv(out_dir, row):
-    csv_path = out_dir / "metrics.csv"
-    write_header = not csv_path.exists()
-    with open(csv_path, "a", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=["epoch", "train_loss", "val_f2w"])
-        if write_header:
-            w.writeheader()
-        w.writerow({"epoch": row["epoch"], "train_loss": f"{row['loss']:.6f}", "val_f2w": f"{row['f2w']:.6f}"})
-
-
-# простая раскраска много-классовой маски поверх 1-канального изображения
-_PALETTE = [
-    (255, 0, 0),  # class 0
-    (0, 255, 0),  # class 1
-    (0, 0, 255),  # class 2
-    (255, 255, 0),  # class 3
-    (255, 0, 255),  # class 4
-    (0, 255, 255),  # class 5
-    (255, 128, 0),  # class 6
-    (128, 0, 255),  # class 7
-]
-
-
-def _save_val_overlays(out_dir, imgs, probs, gts, class_names, thresholds, max_samples=6, alpha=0.4):
-    """imgs: [B,1,H,W] float; probs/gts: [B,C,H,W]."""
-    b = min(len(imgs), max_samples)
-    out = out_dir / "overlays"
-    out.mkdir(parents=True, exist_ok=True)
-    imgs = imgs[:b].cpu().numpy()
-    probs = probs[:b].cpu().numpy()
-    gts = gts[:b].cpu().numpy()
-
-    for i in range(b):
-        img = (imgs[i, 0] * 255).astype(np.uint8)
-        img3 = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-
-        # GT контуры
-        gt_rgb = img3.copy()
-        for k, cname in enumerate(class_names):
-            gt_bin = (gts[i, k] > 0.5).astype(np.uint8) * 255
-            cnts, _ = cv2.findContours(gt_bin, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            cv2.drawContours(gt_rgb, cnts, -1, _PALETTE[k % len(_PALETTE)], 1)
-
-        # PRED маска
-        pred_rgb = img3.copy()
-        for k, cname in enumerate(class_names):
-            thr = thresholds.get(cname, 0.35)
-            pr_bin = (probs[i, k] >= thr).astype(np.uint8)
-            color = np.array(_PALETTE[k % len(_PALETTE)], dtype=np.uint8)
-            overlay = np.zeros_like(pred_rgb)
-            overlay[pr_bin == 1] = color
-            pred_rgb = cv2.addWeighted(pred_rgb, 1.0, overlay, alpha, 0)
-
-        cv2.imwrite(str(out / f"val_{i:02d}_img.png"), img3)
-        cv2.imwrite(str(out / f"val_{i:02d}_gt.png"), gt_rgb)
-        cv2.imwrite(str(out / f"val_{i:02d}_pred.png"), pred_rgb)
-
-
-def main(cfg_path="configs/default.yaml"):
-    cfg = yaml.safe_load(open(cfg_path, "r", encoding="utf-8"))
-    out_dir = Path(cfg["log"]["out_dir"])
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    classes = list(cfg["data"]["classes"].keys())
-    class_weights = [cfg["data"]["classes"][c] for c in classes]
-    class_buffers = cfg["data"].get("class_buffer_m", {})
-    tile, stride = cfg["data"]["tile_size"], cfg["data"]["tile_stride"]
-
-    train_regions = pd.read_csv(out_dir / "train_regions.csv")
-    val_regions = pd.read_csv(out_dir / "val_regions.csv")
-
-    # Опционально ограничиваем число регионов для быстрого теста
-    lim_tr = int(cfg["train"].get("limit_regions", 0) or 0)
-    lim_va = int(cfg["train"].get("limit_val_regions", 0) or 0)
-    if lim_tr > 0:
-        train_regions = train_regions.head(lim_tr)
-    if lim_va > 0:
-        val_regions = val_regions.head(lim_va)
-
-    def _decode(col):
-        return col.apply(lambda s: json.loads(s) if isinstance(s, str) else s)
-
-    train_regions["raster_paths"] = _decode(train_regions["raster_paths"])
-    val_regions["raster_paths"] = _decode(val_regions["raster_paths"])
-
-    train_regions["labels_paths"] = _decode(train_regions["labels_paths"])
-    val_regions["labels_paths"] = _decode(val_regions["labels_paths"])
-
-    counter = collections.Counter()
-    for arr in train_regions["raster_paths"]:
-        for i, p in enumerate(arr):
-            if p:
-                counter[i] += 1
-    print("Channel coverage (train):", dict(counter))
-
-    ds_tr = SlidingGeoDataset(train_regions, classes, tile, stride, augment=True, class_buffers_m=class_buffers)
-
-    # ==== Coverage check ====
-    from shapely.geometry import box
-    import rasterio
-    from rasterio.vrt import WarpedVRT
-    from rasterio.warp import Resampling
-    from rasterio.windows import Window
-
-    print("\n[coverage] by region (train):")
-    for ridx, row in ds_tr.df.iterrows():
-        gdf = ds_tr._gdfs.get(ridx, None)
-        if gdf is None or gdf.empty:
-            print(f"  {row.region_name}: labels=0 feats")
-            continue
-
-        # находим референс
-        ref_path = None
-        for p in row.raster_paths:
-            if p and Path(p).exists():
-                ref_path = p
-                break
-        if ref_path is None:
-            print(f"  {row.region_name}: no raster")
-            continue
-
-        labels_crs = ds_tr._labels_crs[ridx]
-        # размеры сетки VRT (в CRS меток)
-        with rasterio.open(ref_path) as ref, WarpedVRT(ref, dst_crs=labels_crs, resampling=Resampling.bilinear) as vrt:
-            H, W = vrt.height, vrt.width
-            # выберем только тайлы этого региона
-            tiles = [it for it in ds_tr.items if it[0] == ridx]
-            k = 0
-            for _, y, x, h, w in tiles[:2000]:  # ограничим проверку 2000 тайлов на всякий
-                win = Window(x, y, w, h)
-                bounds = rasterio.windows.bounds(win, vrt.transform)
-                if gdf.geometry.intersects(box(*bounds)).any():
-                    k += 1
-            print(f"  {row.region_name}: tiles with labels {k} / {len(tiles)}")
-    # ============================================
-
-    ds_va = SlidingGeoDataset(val_regions, classes, tile, stride, augment=False, class_buffers_m=class_buffers)
-    print(f"Tiles: train={len(ds_tr)}, val={len(ds_va)}")
-
-    # ==== Honest probe: случайная выборка по всему датасету + счётчик прикрытых тайлов ====
+# ===========================
+#        УТИЛИТЫ
+# ===========================
+def set_seed(seed: int = 42):
     import random
-    import numpy as np
 
-    random.seed(0)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
 
-    N = min(400, len(ds_tr))  # проверим 400 случайных окон по всему train
-    idxs = random.sample(range(len(ds_tr)), N)
-    pos_pix = np.zeros(len(classes), dtype=np.int64)
-    non_empty_tiles = 0
-    for j in idxs:
-        _, m, _ = ds_tr[j]  # m: [C,H,W]
-        s = m.sum(dim=(1, 2)).long().numpy()
-        if s.sum() > 0:
-            non_empty_tiles += 1
-        pos_pix += s
 
-    print("Honest probe — non-empty tiles:", int(non_empty_tiles), "of", N)
-    print("Pos pixels per class (honest):", dict(zip(classes, map(int, pos_pix))))
-    exit()
-    # ==== end probe ====
+def make_dirs(path: Path):
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
-    dl_tr = DataLoader(
-        ds_tr,
-        batch_size=cfg["train"]["batch_size"],
-        shuffle=True,
-        num_workers=cfg["train"]["num_workers"],
-        pin_memory=True,
-    )
-    dl_va = DataLoader(
-        ds_va,
-        batch_size=max(1, cfg["train"]["batch_size"] // 2),
-        shuffle=False,
-        num_workers=cfg["train"]["num_workers"],
-        pin_memory=True,
-    )
 
-    num_ch = len(cfg["data"].get("hillshade_channels", [None]))
-    model = build_unet(
-        cfg["model"]["encoder"], cfg["model"]["encoder_weights"], in_channels=num_ch, classes=len(classes)
-    )
+def load_cfg(path: str | Path) -> Dict:
+    with open(path, "r", encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+    return cfg
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model.to(device)
 
-    lr = float(cfg["train"]["lr"])
-    weight_decay = float(cfg["train"]["weight_decay"])
-    opt = AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-    scaler = amp.GradScaler(device, enabled=(torch.cuda.is_available() and bool(cfg["train"]["amp"])))
-    criterion = ComboLoss(class_weights=class_weights, gamma=2.0)
+def class_name_to_idx(classes: List[str]) -> Dict[str, int]:
+    return {name: i for i, name in enumerate(classes)}
 
-    best = -1.0
-    for epoch in range(1, cfg["train"]["epochs"] + 1):
-        model.train()
-        loss_sum = 0.0
-        for img, mask, _meta in tqdm(dl_tr, desc=f"Train {epoch}"):
-            img, mask = img.to(device), mask.to(device)
-            opt.zero_grad(set_to_none=True)
-            with amp.autocast(device, enabled=(torch.cuda.is_available() and bool(cfg["train"]["amp"]))):
-                logits = model(img)
-                loss = criterion(logits, mask)
-            scaler.scale(loss).backward()
-            scaler.step(opt)
-            scaler.update()
-            loss_sum += loss.item()
-        # validation
-        model.eval()
-        probs_all, gts_all, imgs_all = [], [], []
-        with torch.no_grad():
-            for img, mask, _meta in tqdm(dl_va, desc=f"Val {epoch}"):
-                img = img.to(device)
-                logits = model(img)
-                p = torch.sigmoid(logits).cpu()
-                probs_all.append(p)
-                gts_all.append(mask)
-                imgs_all.append(img.cpu())
-        probs_all = torch.cat(probs_all, 0)
-        gts_all = torch.cat(gts_all, 0)
-        imgs_all = torch.cat(imgs_all, 0)
 
-        f2w, per = f2_weighted(gts_all, probs_all, cfg["thresholds"], classes, cfg["data"]["classes"])
-        cur_loss = loss_sum / len(dl_tr)
-        print(
-            f"Epoch {epoch} | loss={cur_loss:.4f} | F2w={f2w:.4f} | "
-            + ", ".join(f"{c}:{per[i]:.3f}" for i, c in enumerate(classes))
+def sigmoid(x: np.ndarray) -> np.ndarray:
+    return 1.0 / (1.0 + np.exp(-x))
+
+
+# ---------- Метрики ----------
+def f2_score(pred: np.ndarray, gt: np.ndarray, beta2: float = 4.0) -> float:
+    tp = np.logical_and(pred == 1, gt == 1).sum()
+    fp = np.logical_and(pred == 1, gt == 0).sum()
+    fn = np.logical_and(pred == 0, gt == 1).sum()
+    denom = (1 + beta2) * tp + beta2 * fn + fp + 1e-9
+    return (1 + beta2) * tp / denom
+
+
+def compute_f2_per_class(y_pred_bin: np.ndarray, y_true: np.ndarray) -> Tuple[List[float], float]:
+    C = y_true.shape[0]
+    scores = []
+    for ci in range(C):
+        scores.append(f2_score(y_pred_bin[ci], y_true[ci]))
+    return scores, float(np.mean(scores))
+
+
+# ---------- Постобработка ----------
+def postproc_per_class(
+    prob_stack: np.ndarray, thresholds_idx: Dict[int, float], thin_class_idx: List[int] | None = None
+) -> np.ndarray:
+    """
+    prob_stack: [C,H,W] float[0..1]
+    возвращает бинарные маски [C,H,W] uint8
+    """
+    C, H, W = prob_stack.shape
+    out = np.zeros((C, H, W), dtype=np.uint8)
+
+    k = np.ones((3, 3), np.uint8)
+    for ci in range(C):
+        thr = float(thresholds_idx.get(ci, 0.35))
+        binm = (prob_stack[ci] >= thr).astype(np.uint8)
+
+        if thin_class_idx and (ci in thin_class_idx):
+            # более агрессивно закрываем разрывы для тонких классов
+            binm = cv2.morphologyEx(binm, cv2.MORPH_CLOSE, k, iterations=2)
+            binm = cv2.morphologyEx(binm, cv2.MORPH_OPEN, k, iterations=1)
+
+        out[ci] = binm
+    return out
+
+
+# ---------- Оверлеи ----------
+def save_overlay(img_hwc: np.ndarray, pred_bin: np.ndarray, gt_bin: np.ndarray, out_path: Path):
+    """
+    img_hwc: [H,W,C] float[0..1]
+    pred_bin, gt_bin: [C,H,W] uint8
+    Красный=Pred, Зелёный=GT (суммарно по классам).
+    """
+    H, W, C = img_hwc.shape
+
+    # Преобразуем в RGB для визуализации
+    if C == 1:
+        # Grayscale -> RGB
+        rgb = np.repeat(img_hwc, 3, axis=2)
+    elif C == 3:
+        # Уже RGB
+        rgb = img_hwc
+    elif C == 4:
+        # 4 канала -> берем первые 3 или используем один канал как grayscale
+        # Вариант: используем канал ch (hillshade) как grayscale
+        rgb = np.repeat(img_hwc[:, :, 1:2], 3, axis=2)  # канал ch (индекс 1)
+    else:
+        # Fallback: первые 3 канала
+        rgb = img_hwc[:, :, :3]
+
+    base = (rgb * 255.0).clip(0, 255).astype(np.uint8)
+    pred_any = (pred_bin.max(axis=0) > 0).astype(np.uint8)
+    gt_any = (gt_bin.max(axis=0) > 0).astype(np.uint8)
+
+    overlay = base.copy()
+    overlay[pred_any == 1] = (0.6 * overlay[pred_any == 1] + 0.4 * np.array([0, 0, 255])).astype(np.uint8)
+    overlay[gt_any == 1] = (0.6 * overlay[gt_any == 1] + 0.4 * np.array([0, 255, 0])).astype(np.uint8)
+    cv2.imwrite(str(out_path), cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR))
+
+
+# ===========================
+#   Балансированный Sampler
+# ===========================
+class PosBalancedSampler(Sampler):
+    """
+    Возвращает индексы так, чтобы не меньше frac_pos батча были с метками.
+    dataset должен иметь атрибут non_empty_indices: List[int].
+    Если его нет или он пуст — используем равномерную выборку.
+    """
+
+    def __init__(self, dataset, batch_size: int, frac_pos: float = 0.5, length: int | None = None, seed: int = 42):
+        self.ds = dataset
+        self.bs = max(1, batch_size)
+        self.frac = float(frac_pos)
+        self.length = length or len(dataset)
+        self.rng = random.Random(seed)
+
+        pos = list(getattr(dataset, "non_empty_indices", []))
+        neg = [i for i in range(len(dataset)) if i not in set(pos)]
+        self.pos = pos
+        self.neg = neg
+        self.enabled = len(self.pos) > 0 and len(self.neg) > 0
+
+    def __len__(self):
+        return self.length
+
+    def __iter__(self):
+        if not self.enabled:
+            # fallback: просто случайные индексы
+            idx = list(range(len(self.ds)))
+            self.rng.shuffle(idx)
+            for i in idx[: self.length]:
+                yield i
+            return
+
+        pos = self.pos.copy()
+        neg = self.neg.copy()
+        self.rng.shuffle(pos)
+        self.rng.shuffle(neg)
+        pi = ni = 0
+
+        need_pos = max(1, int(round(self.bs * self.frac)))
+        need_neg = max(0, self.bs - need_pos)
+
+        steps = math.ceil(self.length / self.bs)
+        for _ in range(steps):
+            batch = []
+            for _ in range(need_pos):
+                if pi >= len(pos):
+                    self.rng.shuffle(self.pos)
+                    pos = self.pos.copy()
+                    pi = 0
+                batch.append(pos[pi])
+                pi += 1
+            for _ in range(need_neg):
+                if ni >= len(neg):
+                    self.rng.shuffle(self.neg)
+                    neg = self.neg.copy()
+                    ni = 0
+                batch.append(neg[ni])
+                ni += 1
+            self.rng.shuffle(batch)
+            for idx in batch:
+                yield idx
+
+
+# ===========================
+#         ОБУЧЕНИЕ
+# ===========================
+def train_one_epoch(model, loader, criterion, optimizer, device, accum_steps: int = 1):
+    model.train()
+    running = 0.0
+    optimizer.zero_grad(set_to_none=True)
+    pbar = tqdm(loader, desc="Train", leave=False)
+    for it, (imgs, masks, meta) in enumerate(pbar):
+        imgs = imgs.to(device)
+        masks = masks.to(device)
+
+        logits = model(imgs)
+        loss = criterion(logits, masks) / accum_steps
+        loss.backward()
+
+        if (it + 1) % accum_steps == 0:
+            optimizer.step()
+            optimizer.zero_grad(set_to_none=True)
+
+        running += loss.item() * accum_steps
+        pbar.set_postfix(loss=f"{running/(it+1):.4f}")
+    return running / max(1, len(loader))
+
+
+@torch.no_grad()
+def validate(
+    model,
+    loader,
+    device,
+    classes: List[str],
+    thresholds: Dict[str, float],
+    save_dir: Path | None = None,
+    max_overlays: int = 8,
+):
+    model.eval()
+    name2idx = class_name_to_idx(classes)
+    thr_idx = {name2idx[k]: v for k, v in thresholds.items() if k in name2idx}
+
+    thin_names = [n for n in ["dorogi", "karavannye_puti"] if n in name2idx]
+    thin_idx = [name2idx[n] for n in thin_names]
+
+    per_class_scores = []
+    mean_scores = []
+
+    prob_means = np.zeros(len(classes), dtype=np.float64)
+    count_b = 0
+
+    saved = 0
+    pbar = tqdm(loader, desc="Val", leave=False)
+    for imgs, masks, meta in pbar:
+        imgs = imgs.to(device)
+        masks = masks.to(device)
+
+        logits = model(imgs)
+        probs = torch.sigmoid(logits).cpu().numpy()  # [B,C,H,W]
+        gts = masks.cpu().numpy().astype(np.uint8)  # [B,C,H,W]
+        ims = imgs.cpu().numpy().transpose(0, 2, 3, 1)  # [B,H,W,C]
+
+        prob_means += probs.mean(axis=(0, 2, 3))
+        count_b += probs.shape[0]
+
+        for b in range(probs.shape[0]):
+            prob_stack = probs[b]
+            gt_stack = gts[b]
+            img_hwc = ims[b].copy()
+
+            bin_stack = postproc_per_class(prob_stack, thr_idx, thin_idx)  # [C,H,W]
+
+            scores_c, mean_c = compute_f2_per_class(bin_stack, gt_stack)
+            per_class_scores.append(scores_c)
+            mean_scores.append(mean_c)
+
+            if save_dir is not None and saved < max_overlays:
+                out_path = save_dir / f"val_overlay_{saved:03d}.png"
+                save_overlay(img_hwc, bin_stack, gt_stack, out_path)
+                saved += 1
+
+    if not per_class_scores:
+        return 0.0, {c: 0.0 for c in classes}
+
+    per_class_scores = np.array(per_class_scores)  # [N,C]
+    mean_scores = float(np.mean(mean_scores))
+    per_class_mean = {classes[i]: float(per_class_scores[:, i].mean()) for i in range(len(classes))}
+
+    # Диагностика: средние вероятности по классам
+    if count_b > 0:
+        prob_means /= count_b
+        stats = ", ".join([f"{classes[i]}={prob_means[i]:.3f}" for i in range(len(classes))])
+        print(f"[val-probs] mean(sigmoid) per class: {stats}")
+
+    return mean_scores, per_class_mean
+
+
+# ===========================
+#            MAIN
+# ===========================
+def main():
+    cfg = load_cfg(Path("configs/default.yaml"))
+    set_seed(cfg.get("seed", 42))
+
+    # ========= Девайс =========
+    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+    print(f"[device] {device}")
+
+    # ========= Классы/веса =========
+    classes = list(cfg["data"]["classes"].keys())
+    class_weights_by_name = cfg["data"]["classes"]
+
+    # ========= Индекс-таблицы =========
+    mini_train_csv = os.environ.get("MINI_TRAIN_CSV")
+    mini_val_csv = os.environ.get("MINI_VAL_CSV")
+
+    if mini_train_csv and mini_val_csv:
+        idx_tr = pd.read_csv(mini_train_csv)
+        idx_val = pd.read_csv(mini_val_csv)
+        print(f"[mini-index] loaded train={len(idx_tr)} val={len(idx_val)} from env")
+    else:
+        idx_tr, idx_val = build_splits(
+            regions_root=cfg["data"]["regions_root"],
+            hillshade_globs=cfg["data"]["hillshade_channels"],
+            labels_glob=cfg["data"]["labels_subpath"],
+            limit_regions=cfg["data"]["train"].get("limit_regions", None),
+            limit_val_regions=cfg["data"]["train"].get("limit_val_regions", None),
         )
 
-        # ===== NEW: история/графики/CSV/оверлеи =====
-        if "history" not in locals():
-            history = []
-        history.append({"epoch": epoch, "loss": cur_loss, "f2w": float(f2w)})
-        _save_curve(out_dir, history)
-        _append_metrics_csv(out_dir, {"epoch": epoch, "loss": cur_loss, "f2w": float(f2w)})
+    # ========= Датасеты/лоадеры =========
+    tile = int(cfg["data"]["tile_size"])
+    stride = int(cfg["data"]["tile_stride"])
+    class_buffers = cfg["data"].get("class_buffer_m", {})
 
-        # Сохраняем несколько валидационных оверлеев на каждой эпохе
-        _save_val_overlays(out_dir, imgs_all, probs_all, gts_all, classes, cfg["thresholds"], max_samples=6, alpha=0.45)
-        # ============================================
+    boundary_mode = cfg["data"].get("boundary_mode", {})  # {"gorodishcha": {"enabled": True, "ring_width_m": 3.0}, ...}
+    ds_tr = SlidingGeoDataset(
+        idx_tr, classes, tile, stride, augment=True, class_buffers_m=class_buffers, boundary_mode=boundary_mode
+    )
+    ds_val = SlidingGeoDataset(
+        idx_val, classes, tile, stride, augment=False, class_buffers_m=class_buffers, boundary_mode=boundary_mode
+    )
 
-        if f2w > best:
-            best = f2w
-            torch.save({"state_dict": model.state_dict(), "classes": classes, "cfg": cfg}, out_dir / "best.pt")
-            print("Saved best:", out_dir / "best.pt")
-    print("Done. Best F2w:", best)
+    bs = int(cfg["data"]["train"]["batch_size"])
+    nw = int(cfg["data"]["train"]["num_workers"])
+
+    # pin_memory только для CUDA (MPS не поддерживает)
+    use_pin = device.type == "cuda"
+
+    # Балансированный sampler (если датасет предоставляет non_empty_indices)
+    use_balanced = hasattr(ds_tr, "non_empty_indices") and len(getattr(ds_tr, "non_empty_indices", [])) > 0
+    if use_balanced:
+        sampler_tr = PosBalancedSampler(ds_tr, batch_size=bs, frac_pos=0.5)
+        loader_tr = DataLoader(
+            ds_tr, batch_size=bs, sampler=sampler_tr, num_workers=nw, pin_memory=use_pin, drop_last=True
+        )
+        print(f"[sampler] PosBalancedSampler enabled: pos={len(ds_tr.non_empty_indices)} of {len(ds_tr)}")
+    else:
+        loader_tr = DataLoader(ds_tr, batch_size=bs, shuffle=True, num_workers=nw, pin_memory=use_pin, drop_last=True)
+        print("[sampler] fallback: shuffle=True")
+
+    loader_val = DataLoader(ds_val, batch_size=bs, shuffle=False, num_workers=max(1, nw // 2), pin_memory=use_pin)
+
+    print(f"Tiles: train={len(ds_tr)}, val={len(ds_val)}")
+
+    # ========= Модель =========
+    in_ch = int(cfg["model"].get("in_channels", 1))
+    encoder_name = cfg["model"].get("encoder", "resnet18")
+    encoder_weights = cfg["model"].get("encoder_weights", "imagenet")
+
+    model = smp.Unet(
+        encoder_name=encoder_name,
+        encoder_weights=encoder_weights,
+        in_channels=in_ch,
+        classes=len(classes),
+    ).to(device)
+
+    # ========= Лосс с весами =========
+    criterion = make_weighted_bce_dice(
+        class_names=classes,
+        weights_by_name=class_weights_by_name,
+        device=device,
+        bce_w=0.4,  # слегка усилим Dice для разреженных структур
+        dice_w=0.6,
+        skip_empty_dice=True,
+    )
+
+    # ========= Оптимизатор/шедулер =========
+    lr = float(cfg["data"]["train"]["lr"])
+    wd = float(cfg["data"]["train"].get("weight_decay", 1e-4))
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=wd)
+
+    epochs = int(cfg["data"]["train"]["epochs"])
+    total_steps = max(1, len(loader_tr) * epochs)
+    sched_cfg = cfg["data"]["train"].get("scheduler", {"name": "cosine", "warmup_epochs": 0, "min_lr": 1e-5})
+    warmup_epochs = int(sched_cfg.get("warmup_epochs", 0))
+    min_lr = float(sched_cfg.get("min_lr", 1e-5))
+
+    cosine_steps = max(1, total_steps - warmup_epochs * len(loader_tr))
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=cosine_steps, eta_min=min_lr)
+
+    accum_steps = int(cfg["data"]["train"].get("grad_accum_steps", 1))
+
+    # ========= Логи/выходы =========
+    out_dir = make_dirs(Path(cfg.get("log", {}).get("out_dir", "runs/default")))
+    best_path = out_dir / "best.pt"
+    overlays_dir = make_dirs(out_dir / "val_overlays")
+    hist_path = out_dir / "history.json"
+
+    # Боле щадящие дефолтные пороги; можно переопределить в default.yaml: thresholds:
+    thresholds = {
+        "dorogi": 0.25,
+        "karavannye_puti": 0.22,
+        "gorodishcha": 0.30,
+        "fortifikatsii": 0.30,
+        "pashni": 0.35,
+        "inoe": 0.40,
+    }
+    thresholds.update(cfg.get("thresholds", {}))
+
+    history = {"loss": [], "F2w": []}
+    best_f2w = -1.0
+
+    # ========= Эпохи =========
+    for epoch in range(1, epochs + 1):
+        print(f"Epoch {epoch}/{epochs}")
+
+        if warmup_epochs and epoch <= warmup_epochs:
+            for g in optimizer.param_groups:
+                g["lr"] = lr
+
+        tr_loss = train_one_epoch(model, loader_tr, criterion, optimizer, device, accum_steps=accum_steps)
+
+        if not warmup_epochs or epoch > warmup_epochs:
+            scheduler.step()
+
+        f2w, per_class = validate(model, loader_val, device, classes, thresholds, save_dir=overlays_dir, max_overlays=8)
+
+        history["loss"].append(float(tr_loss))
+        history["F2w"].append(float(f2w))
+        with open(hist_path, "w", encoding="utf-8") as f:
+            json.dump(history, f, ensure_ascii=False, indent=2)
+
+        pcs = ", ".join([f"{k}:{per_class.get(k,0.0):.3f}" for k in classes])
+        print(f"Epoch {epoch} | loss={tr_loss:.4f} | F2w={f2w:.4f} | {pcs}")
+
+        if f2w > best_f2w:
+            best_f2w = f2w
+            torch.save(
+                {"epoch": epoch, "state_dict": model.state_dict(), "f2w": best_f2w, "classes": classes}, best_path
+            )
+            print(f"Saved best: {best_path}")
+
+    print(f"Done. Best F2w: {best_f2w:.6f}")
 
 
 if __name__ == "__main__":
+    # Отключаем проверку версий albumentations (убирает SSL warnings)
+    os.environ.setdefault("NO_ALBUMENTATIONS_UPDATE", "1")
     main()

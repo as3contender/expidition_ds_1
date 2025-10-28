@@ -23,45 +23,61 @@ data:
     dorogi: 1.0
     pashni: 1.0
     yamy: 1.0
-    inoe: 0.5
+    inoe: 0.25
 
-  # Буферы (в метрах) для линейных тонких классов при растеризации
-  class_buffer_m:
-    dorogi: 2.0
-    karavannye_puti: 2.5
+  boundary_mode:
+    gorodishcha:
+      enabled: true
+      ring_width_m: 3.0
+    selishcha:
+      enabled: true
+      ring_width_m: 4.0
+    kurgany:
+      enabled: true
+      ring_width_m: 4.0
+
 
   # Слайдинг-окна (если тила нет)
   tile_size: 512
   tile_stride: 384    # overlap
+  class_buffer_m:            # расширим тонкие классы в таргете
+    dorogi: 4.0
+    karavannye_puti: 4.5
+    gorodishcha: 1.5
 
-train:
-  batch_size: 4
-  num_workers: 4
-  epochs: 5
-  lr: 3e-4
-  weight_decay: 1e-4
-  amp: true
-  oversample: true
-  oversample_factor: 2.0
-  # Ограничить количество регионов для быстрого теста
-  limit_regions: 5         # 0 или отсутствует — без ограничения
-  limit_val_regions: 2     # можно 0, чтобы валидировать на полном наборе
+  train:
+    batch_size: 2         # 🔹 уменьшено (чтобы не упереться в GPU-RAM MPS)
+    num_workers: 0        # 🔹 0 для macOS - избегаем проблем с multiprocessing/shared memory
+    epochs: 20            # 🔹 5 — тест, 10 — базовый прогон (~3–4 ч)
+    lr: 1e-4             # 🔹 немного выше, чтобы компенсировать маленький батч
+    weight_decay: 1e-4
+    amp: false            # 🔹 AMP не поддерживается на MPS (выключаем)
+    oversample: true
+    oversample_factor: 3.0
+    grad_accum_steps: 2 # имитируем bsz=4 
+    limit_regions: 4      # 🔹 начни с 3–4 регионов, потом увеличь
+    limit_val_regions: 1  # 🔹 быстрая валидация на 1 регионе
+    scheduler:
+      name: cosine
+      warmup_epochs: 1
+      min_lr: 1e-5
 
 model:
-  encoder: "resnet34"
-  encoder_weights: "imagenet"
-  in_channels: 1
+  encoder: "resnet18"   # 🔹 быстрее и легче (для CPU/MPS)
+  encoder_weights: null  # 🔹 null для 4 каналов (imagenet только для 3)
+  in_channels: 4        # 🔹 4 hillshade канала (c, ch, g, i)
 
 log:
   out_dir: "runs/default"
 
 # Порог по умолчанию на инференсе (будет перезаписан, если сделаешь тюнинг)
-thresholds:
-  gorodishcha: 0.35
-  fortifikatsii: 0.35
-  dorogi: 0.30
-  selishcha: 0.35
+thresholds:                  # для F2 попробуй ниже
+  dorogi: 0.25
+  karavannye_puti: 0.25
+  gorodishcha: 0.30
+  fortifikatsii: 0.30
+  selishcha: 0.30
   pashni: 0.40
-  yamy: 0.35
-  karavannye_puti: 0.30
-  inoe: 0.45
+  yamy: 0.30
+  kurgany: 0.30
+  inoe: 0.50
